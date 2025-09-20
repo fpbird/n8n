@@ -13,7 +13,6 @@ import type {
 	IRequestOptions,
 	IHttpRequestMethods,
 	ICredentialDataDecryptedObject,
-	GenericValue,
 } from 'n8n-workflow';
 import {
 	BINARY_ENCODING,
@@ -385,16 +384,19 @@ export class HttpRequestV3 implements INodeType {
 					});
 				}
 
-				const parametersToKeyValueAccumulate = async (
+				const parametersToKeyValueQs = async (
 					accumulator: IDataObject,
 					cur: { name: string; value: string; parameterType?: string; inputDataFieldName?: string },
 				) => {
-					if (accumulator[cur.name] && typeof accumulator[cur.name] === 'string') {
-						accumulator[cur.name] = [accumulator[cur.name], cur.value];
-					} else if (accumulator[cur.name]) {
-						(accumulator[cur.name] as GenericValue[])?.push(cur.value);
-					} else {
+					if (!cur.name) return accumulator; // ignore blank names
+					const prev = accumulator[cur.name];
+
+					if (prev === undefined) {
 						accumulator[cur.name] = cur.value;
+					} else if (Array.isArray(prev)) {
+						(prev as string[]).push(cur.value);
+					} else {
+						accumulator[cur.name] = [String(prev), cur.value];
 					}
 					return accumulator;
 				};
@@ -502,7 +504,8 @@ export class HttpRequestV3 implements INodeType {
 				// Get parameters defined in the UI
 				if (sendQuery && queryParameters) {
 					if (specifyQuery === 'keypair') {
-						requestOptions.qs = await reduceAsync(queryParameters, parametersToKeyValueAccumulate);
+						const filtered = queryParameters.filter((q) => q.name && q.name.trim().length > 0);
+						requestOptions.qs = await reduceAsync(filtered, parametersToKeyValueQs);
 					} else if (specifyQuery === 'json') {
 						// query is specified using JSON
 						try {
